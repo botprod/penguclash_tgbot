@@ -4,7 +4,6 @@ API_HASH = 'botprod!'
 
 DELAYS = {
     'ACCOUNT': [5, 15],  # delay between connections to accounts (the more accounts, the longer the delay)
-    'SLEEP_TIME': [120, 180]
 }
 
 LOG_LEVEL = "INFO"

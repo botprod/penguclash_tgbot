@@ -145,12 +145,14 @@ class Pengu:
                                 logger.debug(
                                     f"Thread {self.thread} | {self.account} | Waitlist not joined, proceeding to join")
                                 await self.join_waitlist()
+                                await asyncio.sleep(3)
                                 await self.process_tasks()
 
                             if waitlist_status == "pending":
                                 logger.debug(
                                     f"Thread {self.thread} | {self.account} | Waitlist pending, proceeding to claim")
                                 await self.claim_waitlist()
+                                await asyncio.sleep(3)
                                 await self.process_tasks()
 
                             logger.success(f"Thread {self.thread} | {self.account} | Login successful")
