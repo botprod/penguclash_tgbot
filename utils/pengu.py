@@ -113,57 +113,56 @@ class Pengu:
         logger.debug(f"Thread {self.thread} | {self.account} | Login request data: {login_data}")
 
         try:
-            async with aiohttp.ClientSession() as session:
-                logger.debug(
-                    f"Thread {self.thread} | {self.account} | Sending login request to https://api.elympics.cc/v2/auth/user/telegram-auth-v2")
-                async with session.post(
-                        'https://api.elympics.cc/v2/auth/user/telegram-auth-v2',
-                        headers=self.headers,
-                        json=login_data,
-                        ssl=False
-                ) as response:
-                    logger.debug(f"Thread {self.thread} | {self.account} | Login response status: {response.status}")
-                    response_text = await response.text()
-                    logger.debug(f"Thread {self.thread} | {self.account} | Login response body: {response_text}")
-                    if response.status == 200:
-                        response_json = await response.json()
-                        logger.debug(f"Thread {self.thread} | {self.account} | Login response JSON: {response_json}")
-                        if "jwtToken" in response_json:
-                            self.jwt_token = response_json["jwtToken"]
-                            self.user_id = response_json["userId"]
-                            self.nickname = response_json["nickname"]
-                            self.avatar_url = response_json["avatarUrl"]
-                            self.headers["authorization"] = f"Bearer {self.jwt_token}"
-                            logger.info(
-                                f"Thread {self.thread} | {self.account} | JWT token received, user_id: {self.user_id}, nickname: {self.nickname}")
+            logger.debug(
+                f"Thread {self.thread} | {self.account} | Sending login request to https://api.elympics.cc/v2/auth/user/telegram-auth-v2")
+            async with self.session.post(
+                    'https://api.elympics.cc/v2/auth/user/telegram-auth-v2',
+                    headers=self.headers,
+                    json=login_data,
+                    ssl=False
+            ) as response:
+                logger.debug(f"Thread {self.thread} | {self.account} | Login response status: {response.status}")
+                response_text = await response.text()
+                logger.debug(f"Thread {self.thread} | {self.account} | Login response body: {response_text}")
+                if response.status == 200:
+                    response_json = await response.json()
+                    logger.debug(f"Thread {self.thread} | {self.account} | Login response JSON: {response_json}")
+                    if "jwtToken" in response_json:
+                        self.jwt_token = response_json["jwtToken"]
+                        self.user_id = response_json["userId"]
+                        self.nickname = response_json["nickname"]
+                        self.avatar_url = response_json["avatarUrl"]
+                        self.headers["authorization"] = f"Bearer {self.jwt_token}"
+                        logger.info(
+                            f"Thread {self.thread} | {self.account} | JWT token received, user_id: {self.user_id}, nickname: {self.nickname}")
+                        logger.debug(
+                            f"Thread {self.thread} | {self.account} | Updated headers with authorization: {self.headers}")
+
+                        waitlist_status = await self.check_waitlist()
+                        logger.info(f"Thread {self.thread} | {self.account} | Waitlist status: {waitlist_status}")
+                        if waitlist_status == "not-joined":
                             logger.debug(
-                                f"Thread {self.thread} | {self.account} | Updated headers with authorization: {self.headers}")
+                                f"Thread {self.thread} | {self.account} | Waitlist not joined, proceeding to join")
+                            await self.join_waitlist()
+                            await asyncio.sleep(3)
+                            await self.process_tasks()
 
-                            waitlist_status = await self.check_waitlist()
-                            logger.info(f"Thread {self.thread} | {self.account} | Waitlist status: {waitlist_status}")
-                            if waitlist_status == "not-joined":
-                                logger.debug(
-                                    f"Thread {self.thread} | {self.account} | Waitlist not joined, proceeding to join")
-                                await self.join_waitlist()
-                                await asyncio.sleep(3)
-                                await self.process_tasks()
+                        if waitlist_status == "pending":
+                            logger.debug(
+                                f"Thread {self.thread} | {self.account} | Waitlist pending, proceeding to claim")
+                            await self.claim_waitlist()
+                            await asyncio.sleep(3)
+                            await self.process_tasks()
 
-                            if waitlist_status == "pending":
-                                logger.debug(
-                                    f"Thread {self.thread} | {self.account} | Waitlist pending, proceeding to claim")
-                                await self.claim_waitlist()
-                                await asyncio.sleep(3)
-                                await self.process_tasks()
-
-                            logger.success(f"Thread {self.thread} | {self.account} | Login successful")
-                            return True, {"user_id": self.user_id, "nickname": self.nickname}
-                        else:
-                            logger.error(f"Thread {self.thread} | {self.account} | JWT token not found in response")
-                            return False, "No JWT token in response"
+                        logger.success(f"Thread {self.thread} | {self.account} | Login successful")
+                        return True, {"user_id": self.user_id, "nickname": self.nickname}
                     else:
-                        logger.error(
-                            f"Thread {self.thread} | {self.account} | Login HTTP error {response.status}: {response_text}")
-                        return False, f"HTTP {response.status}: {response_text}"
+                        logger.error(f"Thread {self.thread} | {self.account} | JWT token not found in response")
+                        return False, "No JWT token in response"
+                else:
+                    logger.error(
+                        f"Thread {self.thread} | {self.account} | Login HTTP error {response.status}: {response_text}")
+                    return False, f"HTTP {response.status}: {response_text}"
         except Exception as e:
             logger.error(f"Thread {self.thread} | {self.account} | Login error: {e}")
             return False, str(e)
@@ -171,29 +170,28 @@ class Pengu:
     async def check_waitlist(self):
         logger.debug(f"Thread {self.thread} | {self.account} | Checking waitlist status")
         try:
-            async with aiohttp.ClientSession() as session:
+            logger.debug(
+                f"Thread {self.thread} | {self.account} | Sending GET request to https://api.pudgy-clash.elympics.ai/api/waitlist with headers: {self.headers}")
+            async with self.session.get(
+                    'https://api.pudgy-clash.elympics.ai/api/waitlist',
+                    headers=self.headers,
+                    ssl=False
+            ) as response:
                 logger.debug(
-                    f"Thread {self.thread} | {self.account} | Sending GET request to https://api.pudgy-clash.elympics.ai/api/waitlist with headers: {self.headers}")
-                async with session.get(
-                        'https://api.pudgy-clash.elympics.ai/api/waitlist',
-                        headers=self.headers,
-                        ssl=False
-                ) as response:
+                    f"Thread {self.thread} | {self.account} | Waitlist check response status: {response.status}")
+                response_text = await response.text()
+                logger.debug(
+                    f"Thread {self.thread} | {self.account} | Waitlist check response body: {response_text}")
+                if response.status == 200:
+                    response_json = await response.json()
                     logger.debug(
-                        f"Thread {self.thread} | {self.account} | Waitlist check response status: {response.status}")
-                    response_text = await response.text()
-                    logger.debug(
-                        f"Thread {self.thread} | {self.account} | Waitlist check response body: {response_text}")
-                    if response.status == 200:
-                        response_json = await response.json()
-                        logger.debug(
-                            f"Thread {self.thread} | {self.account} | Waitlist check response JSON: {response_json}")
-                        status = response_json.get("status", "unknown")
-                        logger.info(f"Thread {self.thread} | {self.account} | Waitlist status: {status}")
-                        return status
-                    logger.error(
-                        f"Thread {self.thread} | {self.account} | Waitlist check HTTP error {response.status}: {response_text}")
-                    return "unknown"
+                        f"Thread {self.thread} | {self.account} | Waitlist check response JSON: {response_json}")
+                    status = response_json.get("status", "unknown")
+                    logger.info(f"Thread {self.thread} | {self.account} | Waitlist status: {status}")
+                    return status
+                logger.error(
+                    f"Thread {self.thread} | {self.account} | Waitlist check HTTP error {response.status}: {response_text}")
+                return "unknown"
         except Exception as e:
             logger.error(f"Thread {self.thread} | {self.account} | Waitlist check error: {e}")
             return "unknown"
@@ -203,56 +201,55 @@ class Pengu:
             "elympicsAvatarUrl": self.avatar_url,
             "elympicsNickname": self.nickname,
             "telegramNickname": self.nickname,
+            "isBot": False,
             "telegramUserId": self.user_id,
             "invitationCode": config.REF_LINK
         }
         logger.debug(f"Thread {self.thread} | {self.account} | Joining waitlist with data: {join_data}")
 
         try:
-            async with aiohttp.ClientSession() as session:
+            logger.debug(
+                f"Thread {self.thread} | {self.account} | Sending POST request to https://api.pudgy-clash.elympics.ai/api/waitlist/join with headers: {self.headers}")
+            async with self.session.post(
+                    'https://api.pudgy-clash.elympics.ai/api/waitlist/join',
+                    headers=self.headers,
+                    json=join_data,
+                    ssl=False
+            ) as response:
                 logger.debug(
-                    f"Thread {self.thread} | {self.account} | Sending POST request to https://api.pudgy-clash.elympics.ai/api/waitlist/join with headers: {self.headers}")
-                async with session.post(
-                        'https://api.pudgy-clash.elympics.ai/api/waitlist/join',
-                        headers=self.headers,
-                        json=join_data,
-                        ssl=False
-                ) as response:
-                    logger.debug(
-                        f"Thread {self.thread} | {self.account} | Join waitlist response status: {response.status}")
-                    response_text = await response.text()
-                    logger.debug(
-                        f"Thread {self.thread} | {self.account} | Join waitlist response body: {response_text}")
-                    if response.status == 200:
-                        logger.success(f"Thread {self.thread} | {self.account} | Successfully joined waitlist")
-                    else:
-                        logger.error(
-                            f"Thread {self.thread} | {self.account} | Failed to join waitlist: HTTP {response.status}: {response_text}")
+                    f"Thread {self.thread} | {self.account} | Join waitlist response status: {response.status}")
+                response_text = await response.text()
+                logger.debug(
+                    f"Thread {self.thread} | {self.account} | Join waitlist response body: {response_text}")
+                if response.status == 200:
+                    logger.success(f"Thread {self.thread} | {self.account} | Successfully joined waitlist")
+                else:
+                    logger.error(
+                        f"Thread {self.thread} | {self.account} | Failed to join waitlist: HTTP {response.status}: {response_text}")
         except Exception as e:
             logger.error(f"Thread {self.thread} | {self.account} | Join waitlist error: {e}")
 
     async def claim_waitlist(self):
         logger.debug(f"Thread {self.thread} | {self.account} | Claiming waitlist")
         try:
-            async with aiohttp.ClientSession() as session:
+            logger.debug(
+                f"Thread {self.thread} | {self.account} | Sending POST request to https://api.pudgy-clash.elympics.ai/api/waitlist/claim with headers: {self.headers}")
+            async with self.session.post(
+                    'https://api.pudgy-clash.elympics.ai/api/waitlist/claim',
+                    headers=self.headers,
+                    json={"isBot": False},
+                    ssl=False
+            ) as response:
                 logger.debug(
-                    f"Thread {self.thread} | {self.account} | Sending POST request to https://api.pudgy-clash.elympics.ai/api/waitlist/claim with headers: {self.headers}")
-                async with session.post(
-                        'https://api.pudgy-clash.elympics.ai/api/waitlist/claim',
-                        headers=self.headers,
-                        json={},
-                        ssl=False
-                ) as response:
-                    logger.debug(
-                        f"Thread {self.thread} | {self.account} | Claim waitlist response status: {response.status}")
-                    response_text = await response.text()
-                    logger.debug(
-                        f"Thread {self.thread} | {self.account} | Claim waitlist response body: {response_text}")
-                    if response.status == 200:
-                        logger.success(f"Thread {self.thread} | {self.account} | Successfully claimed waitlist")
-                    else:
-                        logger.error(
-                            f"Thread {self.thread} | {self.account} | Failed to claim waitlist: HTTP {response.status}: {response_text}")
+                    f"Thread {self.thread} | {self.account} | Claim waitlist response status: {response.status}")
+                response_text = await response.text()
+                logger.debug(
+                    f"Thread {self.thread} | {self.account} | Claim waitlist response body: {response_text}")
+                if response.status == 200:
+                    logger.success(f"Thread {self.thread} | {self.account} | Successfully claimed waitlist")
+                else:
+                    logger.error(
+                        f"Thread {self.thread} | {self.account} | Failed to claim waitlist: HTTP {response.status}: {response_text}")
         except Exception as e:
             logger.error(f"Thread {self.thread} | {self.account} | Claim waitlist error: {e}")
 
@@ -262,33 +259,32 @@ class Pengu:
         for attempt in range(retries):
             logger.info(f"Thread {self.thread} | {self.account} | Twitter task attempt {attempt + 1}/{retries}")
             try:
-                async with aiohttp.ClientSession() as session:
+                logger.debug(
+                    f"Thread {self.thread} | {self.account} | Sending POST request to https://api.pudgy-clash.elympics.ai/api/waitlist/complete/twitter with headers: {self.headers}")
+                async with self.session.post(
+                        'https://api.pudgy-clash.elympics.ai/api/waitlist/complete/twitter',
+                        headers=self.headers,
+                        json={"isBot": False},
+                        ssl=False
+                ) as response:
                     logger.debug(
-                        f"Thread {self.thread} | {self.account} | Sending POST request to https://api.pudgy-clash.elympics.ai/api/waitlist/complete/twitter with headers: {self.headers}")
-                    async with session.post(
-                            'https://api.pudgy-clash.elympics.ai/api/waitlist/complete/twitter',
-                            headers=self.headers,
-                            json={},
-                            ssl=False
-                    ) as response:
-                        logger.debug(
-                            f"Thread {self.thread} | {self.account} | Twitter task response status: {response.status}")
-                        response_text = await response.text()
-                        logger.debug(
-                            f"Thread {self.thread} | {self.account} | Twitter task response body: {response_text}")
-                        if response.status == 200:
-                            logger.success(
-                                f"Thread {self.thread} | {self.account} | Successfully completed Twitter task")
-                            return True
+                        f"Thread {self.thread} | {self.account} | Twitter task response status: {response.status}")
+                    response_text = await response.text()
+                    logger.debug(
+                        f"Thread {self.thread} | {self.account} | Twitter task response body: {response_text}")
+                    if response.status == 200:
+                        logger.success(
+                            f"Thread {self.thread} | {self.account} | Successfully completed Twitter task")
+                        return True
+                    else:
+                        logger.error(
+                            f"Thread {self.thread} | {self.account} | Failed to complete Twitter task: HTTP {response.status}: {response_text}")
+                        if response.status == 400 and attempt < retries - 1:
+                            logger.info(
+                                f"Thread {self.thread} | {self.account} | Retrying Twitter task in {delay} seconds...")
+                            await asyncio.sleep(delay)
                         else:
-                            logger.error(
-                                f"Thread {self.thread} | {self.account} | Failed to complete Twitter task: HTTP {response.status}: {response_text}")
-                            if response.status == 400 and attempt < retries - 1:
-                                logger.info(
-                                    f"Thread {self.thread} | {self.account} | Retrying Twitter task in {delay} seconds...")
-                                await asyncio.sleep(delay)
-                            else:
-                                return False
+                            return False
             except Exception as e:
                 logger.error(f"Thread {self.thread} | {self.account} | Complete Twitter task error: {e}")
                 if attempt < retries - 1:
@@ -305,33 +301,30 @@ class Pengu:
         for attempt in range(retries):
             logger.info(f"Thread {self.thread} | {self.account} | Telegram task attempt {attempt + 1}/{retries}")
             try:
-                async with aiohttp.ClientSession() as session:
+                async with self.session.post(
+                        'https://api.pudgy-clash.elympics.ai/api/waitlist/complete/telegram',
+                        headers=self.headers,
+                        json={"isBot": False},
+                        ssl=False
+                ) as response:
                     logger.debug(
-                        f"Thread {self.thread} | {self.account} | Sending POST request to https://api.pudgy-clash.elympics.ai/api/waitlist/complete/telegram with headers: {self.headers}")
-                    async with session.post(
-                            'https://api.pudgy-clash.elympics.ai/api/waitlist/complete/telegram',
-                            headers=self.headers,
-                            json={},
-                            ssl=False
-                    ) as response:
-                        logger.debug(
-                            f"Thread {self.thread} | {self.account} | Telegram task response status: {response.status}")
-                        response_text = await response.text()
-                        logger.debug(
-                            f"Thread {self.thread} | {self.account} | Telegram task response body: {response_text}")
-                        if response.status == 200:
-                            logger.success(
-                                f"Thread {self.thread} | {self.account} | Successfully completed Telegram task")
-                            return True
+                        f"Thread {self.thread} | {self.account} | Telegram task response status: {response.status}")
+                    response_text = await response.text()
+                    logger.debug(
+                        f"Thread {self.thread} | {self.account} | Telegram task response body: {response_text}")
+                    if response.status == 200:
+                        logger.success(
+                            f"Thread {self.thread} | {self.account} | Successfully completed Telegram task")
+                        return True
+                    else:
+                        logger.error(
+                            f"Thread {self.thread} | {self.account} | Failed to complete Telegram task: HTTP {response.status}: {response_text}")
+                        if response.status == 400 and attempt < retries - 1:
+                            logger.info(
+                                f"Thread {self.thread} | {self.account} | Retrying Telegram task in {delay} seconds...")
+                            await asyncio.sleep(delay)
                         else:
-                            logger.error(
-                                f"Thread {self.thread} | {self.account} | Failed to complete Telegram task: HTTP {response.status}: {response_text}")
-                            if response.status == 400 and attempt < retries - 1:
-                                logger.info(
-                                    f"Thread {self.thread} | {self.account} | Retrying Telegram task in {delay} seconds...")
-                                await asyncio.sleep(delay)
-                            else:
-                                return False
+                            return False
             except Exception as e:
                 logger.error(f"Thread {self.thread} | {self.account} | Complete Telegram task error: {e}")
                 if attempt < retries - 1:
@@ -377,78 +370,75 @@ class Pengu:
     async def get_waitlist_data(self):
         logger.debug(f"Thread {self.thread} | {self.account} | Retrieving waitlist data")
         try:
-            async with aiohttp.ClientSession() as session:
+            async with self.session.get(
+                    'https://api.pudgy-clash.elympics.ai/api/waitlist',
+                    headers=self.headers,
+                    ssl=False
+            ) as response:
                 logger.debug(
-                    f"Thread {self.thread} | {self.account} | Sending GET request to https://api.pudgy-clash.elympics.ai/api/waitlist with headers: {self.headers}")
-                async with session.get(
-                        'https://api.pudgy-clash.elympics.ai/api/waitlist',
-                        headers=self.headers,
-                        ssl=False
-                ) as response:
-                    logger.debug(
-                        f"Thread {self.thread} | {self.account} | Waitlist data response status: {response.status}")
-                    response_text = await response.text()
-                    logger.debug(
-                        f"Thread {self.thread} | {self.account} | Waitlist data response body: {response_text}")
-                    if response.status == 200:
-                        response_json = await response.json()
-                        invite_code = response_json.get("inviteCode", "unknown")
+                    f"Thread {self.thread} | {self.account} | Waitlist data response status: {response.status}")
+                response_text = await response.text()
+                logger.debug(
+                    f"Thread {self.thread} | {self.account} | Waitlist data response body: {response_text}")
+                if response.status == 200:
+                    response_json = await response.json()
+                    invite_code = response_json.get("inviteCode", "unknown")
+                    logger.success(
+                        f"Thread {self.thread} | {self.account} | Successfully retrieved waitlist data with invite code: {invite_code}")
+                    logger.debug(f"Thread {self.thread} | {self.account} | Waitlist data JSON: {response_json}")
+
+                    # Prepare account data to save
+                    account_data = {
+                        "account": self.account,
+                        "user_id": self.user_id,
+                        "nickname": self.nickname,
+                        "invite_code": invite_code,
+                        "waitlist_status": response_json.get("status", "unknown"),
+                        "reward": response_json.get("reward", "unknown")
+                    }
+                    logger.debug(f"Thread {self.thread} | {self.account} | Account data to save: {account_data}")
+
+                    # Save to file
+                    output_dir = "output"
+                    os.makedirs(output_dir, exist_ok=True)
+                    output_file = os.path.join(output_dir, "accounts_data.json")
+                    logger.debug(f"Thread {self.thread} | {self.account} | Saving account data to {output_file}")
+
+                    # Thread-safe file writing
+                    try:
+                        # Read existing data
+                        existing_data = []
+                        if os.path.exists(output_file):
+                            with open(output_file, 'r', encoding='utf-8') as f:
+                                try:
+                                    existing_data = json.load(f)
+                                    if not isinstance(existing_data, list):
+                                        existing_data = [existing_data]
+                                    logger.debug(
+                                        f"Thread {self.thread} | {self.account} | Loaded existing data: {existing_data}")
+                                except json.JSONDecodeError:
+                                    logger.warning(
+                                        f"Thread {self.thread} | {self.account} | Existing JSON file is corrupted, starting with empty data")
+                                    existing_data = []
+
+                        # Append new data
+                        existing_data.append(account_data)
+                        logger.debug(
+                            f"Thread {self.thread} | {self.account} | Appended new data, total entries: {len(existing_data)}")
+
+                        # Write back to file
+                        with open(output_file, 'w', encoding='utf-8') as f:
+                            json.dump(existing_data, f, indent=4, ensure_ascii=False)
                         logger.success(
-                            f"Thread {self.thread} | {self.account} | Successfully retrieved waitlist data with invite code: {invite_code}")
-                        logger.debug(f"Thread {self.thread} | {self.account} | Waitlist data JSON: {response_json}")
+                            f"Thread {self.thread} | {self.account} | Saved account data to {output_file}")
+                    except Exception as e:
+                        logger.error(f"Thread {self.thread} | {self.account} | Failed to save account data: {e}")
 
-                        # Prepare account data to save
-                        account_data = {
-                            "account": self.account,
-                            "user_id": self.user_id,
-                            "nickname": self.nickname,
-                            "invite_code": invite_code,
-                            "waitlist_status": response_json.get("status", "unknown"),
-                            "reward": response_json.get("reward", "unknown")
-                        }
-                        logger.debug(f"Thread {self.thread} | {self.account} | Account data to save: {account_data}")
-
-                        # Save to file
-                        output_dir = "output"
-                        os.makedirs(output_dir, exist_ok=True)
-                        output_file = os.path.join(output_dir, "accounts_data.json")
-                        logger.debug(f"Thread {self.thread} | {self.account} | Saving account data to {output_file}")
-
-                        # Thread-safe file writing
-                        try:
-                            # Read existing data
-                            existing_data = []
-                            if os.path.exists(output_file):
-                                with open(output_file, 'r', encoding='utf-8') as f:
-                                    try:
-                                        existing_data = json.load(f)
-                                        if not isinstance(existing_data, list):
-                                            existing_data = [existing_data]
-                                        logger.debug(
-                                            f"Thread {self.thread} | {self.account} | Loaded existing data: {existing_data}")
-                                    except json.JSONDecodeError:
-                                        logger.warning(
-                                            f"Thread {self.thread} | {self.account} | Existing JSON file is corrupted, starting with empty data")
-                                        existing_data = []
-
-                            # Append new data
-                            existing_data.append(account_data)
-                            logger.debug(
-                                f"Thread {self.thread} | {self.account} | Appended new data, total entries: {len(existing_data)}")
-
-                            # Write back to file
-                            with open(output_file, 'w', encoding='utf-8') as f:
-                                json.dump(existing_data, f, indent=4, ensure_ascii=False)
-                            logger.success(
-                                f"Thread {self.thread} | {self.account} | Saved account data to {output_file}")
-                        except Exception as e:
-                            logger.error(f"Thread {self.thread} | {self.account} | Failed to save account data: {e}")
-
-                        return response_json
-                    else:
-                        logger.error(
-                            f"Thread {self.thread} | {self.account} | Failed to retrieve waitlist data: HTTP {response.status}: {response_text}")
-                        return None
+                    return response_json
+                else:
+                    logger.error(
+                        f"Thread {self.thread} | {self.account} | Failed to retrieve waitlist data: HTTP {response.status}: {response_text}")
+                    return None
         except Exception as e:
             logger.error(f"Thread {self.thread} | {self.account} | Get waitlist data error: {e}")
             return None
